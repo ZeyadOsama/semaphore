@@ -10,9 +10,25 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include <unistd.h>
 
-int main() {
+/**
+ * @brief producer threading function.
+ */
+void *pthread_producer(void *);
+
+/**
+ * @brief consumer threading function.
+ */
+void *pthread_consumer(void *);
+
+int main(void) {
     return 0;
-} 
+}
 
+void *pthread_producer(void *arg) {
+    pthread_exit(NULL);
+}
+
+void *pthread_consumer(void *arg) {
+    pthread_exit(NULL);
+}
