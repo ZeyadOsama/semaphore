@@ -18,7 +18,9 @@
 
 #define TYPE int
 #define BUFFER_LENGTH 2
+
 #define D_M_CNT 10;
+#define D_B_SIZE 2;
 
 /**
  * @brief queue node structure definition.
@@ -102,9 +104,10 @@ void *pthread_consumer(void *);
 void *pthread_message(void *);
 
 /**
+ * @param buffer_length.
  * @return a pthread_data_t ptr with it's default values.
  */
-pthread_data_t *init_args();
+pthread_data_t *init_args(int buffer_length);
 
 /**
  * @param pthread_data_t to be freed.
@@ -116,26 +119,29 @@ void destroy_args(pthread_data_t *args);
  */
 bool pc_check(queue *q);
 
+void print_help();
+
 /// Driver Program.
 int main(int argc, char *argv[]) {
+    // set default values
     int M_CNT = D_M_CNT
+    int B_SIZE = D_B_SIZE
+
     // terminal proper usage.
     if (argc < 3)
-        printf("Usage:\n"
-               "\t./sem -m <messages-count>\n"
-               "\t./sem -d -m <messages-count>\n"
-               "\nOptions:\n"
-               "\t-d\t\tDebug mode.\n"
-               "\nSwitching to default mode.\n\n");
+        print_help();
     else
-        for (int i = 0; i < argc; ++i)
-            if (strcmp(argv[i], "-m") == 0)
+        for (int i = 0; i < argc; ++i) {
+            if (strcmp(argv[i], "-m") == 0 || strcmp(argv[i], "--message") == 0)
                 M_CNT = (int) strtol(argv[++i], (char **) NULL, 10);
+            if (strcmp(argv[i], "-b") == 0 || strcmp(argv[i], "--buffer") == 0)
+                B_SIZE = (int) strtol(argv[++i], (char **) NULL, 10);
+        }
 
     // arguments to be passed between threads.
     // for the sake of communication.
     pthread_data_t *args;
-    args = init_args();
+    args = init_args(B_SIZE);
 
     // monitor thread creation.
     pthread_t m_monitor_t;
@@ -158,6 +164,17 @@ int main(int argc, char *argv[]) {
 
     destroy_args(args);
     return EXIT_SUCCESS;
+}
+
+void print_help() {
+    printf("Usage:\n"
+           "\t./sem -m <messages-count>\n"
+           "\t./sem -b <buffer-size>\n"
+           "\t./sem -m <messages-count> -b <buffer-size>\n"
+           "\t./sem -d -m <messages-count> -b <buffer-size>\n"
+           "\nOptions:\n"
+           "\t-d\t\tDebug mode.\n"
+           "\nSwitching to default mode.\n\n");
 }
 
 void *pthread_producer(void *arg) {
@@ -249,13 +266,13 @@ bool pc_check(queue *q) {
     return cnt >= 2;
 }
 
-pthread_data_t *init_args() {
+pthread_data_t *init_args(int buffer_length) {
     pthread_data_t *args = malloc(sizeof(pthread_data_t));
     if (args == NULL) {
         perror("args:: ");
         exit(EXIT_FAILURE);
     }
-    args->buffer = init_queue(BUFFER_LENGTH);
+    args->buffer = init_queue(buffer_length);
     if (args->buffer == NULL) {
         perror("buffer:: ");
         exit(EXIT_FAILURE);
