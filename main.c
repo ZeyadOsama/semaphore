@@ -17,10 +17,9 @@
 #define DEBUG
 
 #define TYPE int
-#define BUFFER_LENGTH 2
 
-#define D_M_CNT 10;
-#define D_B_SIZE 2;
+#define DEF_M_CNT 10
+#define DEF_B_LENGTH 2
 
 /**
  * @brief queue node structure definition.
@@ -74,7 +73,7 @@ bool is_empty(queue *q);
 
 /**
  * @param q to be checked.
- * @return boolean upoun check.
+ * @return boolean upon check.
  */
 bool is_full(queue *q);
 
@@ -85,7 +84,7 @@ typedef struct {
     bool is_running;
     int cnt;
     queue *buffer;
-    dispatch_semaphore_t s_cnt, s_buffer_length, s_buffer, s_buffer_index;
+    dispatch_semaphore_t s_cnt, s_buffer, s_buffer_full, s_buffer_empty;
 } pthread_data_t;
 
 /**
@@ -124,8 +123,8 @@ void print_help();
 /// Driver Program.
 int main(int argc, char *argv[]) {
     // set default values
-    int M_CNT = D_M_CNT
-    int B_SIZE = D_B_SIZE
+    int M_CNT = DEF_M_CNT;
+    int B_LENGTH = DEF_B_LENGTH;
 
     // terminal proper usage.
     if (argc < 3)
@@ -135,13 +134,13 @@ int main(int argc, char *argv[]) {
             if (strcmp(argv[i], "-m") == 0 || strcmp(argv[i], "--message") == 0)
                 M_CNT = (int) strtol(argv[++i], (char **) NULL, 10);
             if (strcmp(argv[i], "-b") == 0 || strcmp(argv[i], "--buffer") == 0)
-                B_SIZE = (int) strtol(argv[++i], (char **) NULL, 10);
+                B_LENGTH = (int) strtol(argv[++i], (char **) NULL, 10);
         }
 
     // arguments to be passed between threads.
     // for the sake of communication.
     pthread_data_t *args;
-    args = init_args(B_SIZE);
+    args = init_args(B_LENGTH);
 
     // monitor thread creation.
     pthread_t m_monitor_t;
@@ -166,36 +165,30 @@ int main(int argc, char *argv[]) {
     return EXIT_SUCCESS;
 }
 
-void print_help() {
-    printf("Usage:\n"
-           "\t./sem -m <messages-count>\n"
-           "\t./sem -b <buffer-size>\n"
-           "\t./sem -m <messages-count> -b <buffer-size>\n"
-           "\t./sem -d -m <messages-count> -b <buffer-size>\n"
-           "\nOptions:\n"
-           "\t-d\t\tDebug mode.\n"
-           "\nSwitching to default mode.\n\n");
-}
-
 void *pthread_producer(void *arg) {
     pthread_data_t *arg_t = (pthread_data_t *) arg;
     int cnt;
     while (arg_t->is_running) {
+        // random sleep.
         sleep(random() % 10 + 1);
+
         printf("monitor thread:: waiting to read counter.\n");
         dispatch_semaphore_wait(arg_t->s_cnt, DISPATCH_TIME_FOREVER);
         cnt = arg_t->cnt;
-        printf("monitor thread:: reading a count value of %d.\n", cnt);
         arg_t->cnt = 0;
         dispatch_semaphore_signal(arg_t->s_cnt);
+        printf("monitor thread:: reading a count value of %d succeeded.\n", cnt);
+
         if (is_full(arg_t->buffer))
             printf("monitor thread:: buffer is full.\n");
-        dispatch_semaphore_wait(arg_t->s_buffer_length, DISPATCH_TIME_FOREVER);
+
+        // wait upon full buffer.
+        dispatch_semaphore_wait(arg_t->s_buffer_full, DISPATCH_TIME_FOREVER);
         dispatch_semaphore_wait(arg_t->s_buffer, DISPATCH_TIME_FOREVER);
         enqueue(arg_t->buffer, cnt);
-        printf("monitor thread:: writing to buffer at position %d\n", arg_t->buffer->length);
         dispatch_semaphore_signal(arg_t->s_buffer);
-        dispatch_semaphore_signal(arg_t->s_buffer_index);
+        dispatch_semaphore_signal(arg_t->s_buffer_empty);
+        printf("monitor thread:: writing to buffer at position %d succeeded.\n", arg_t->buffer->length);
     }
     fprintf(stderr, "warning:: producer thread has been activating for so long without any change.\n"
                     "warning:: producer thread will terminate.\n");
@@ -206,19 +199,24 @@ void *pthread_consumer(void *arg) {
     pthread_data_t *arg_t = (pthread_data_t *) arg;
     queue q_condition;
     q_condition.max_length = INT8_MAX;
+    int val;
     while (true) {
+        // random sleep.
         sleep(random() % 10 + 1);
 
         if (is_empty(arg_t->buffer))
             printf("collector thread:: buffer is empty.\n");
 
-        dispatch_semaphore_wait(arg_t->s_buffer_index, DISPATCH_TIME_FOREVER);
+        // wait upon empty buffer.
+        dispatch_semaphore_wait(arg_t->s_buffer_empty, DISPATCH_TIME_FOREVER);
         dispatch_semaphore_wait(arg_t->s_buffer, DISPATCH_TIME_FOREVER);
-        int val = dequeue(arg_t->buffer);
-        printf("collector thread:: reading value %d from buffer at position %d.\n", val, arg_t->buffer->length);
+        val = dequeue(arg_t->buffer);
         dispatch_semaphore_signal(arg_t->s_buffer);
-        dispatch_semaphore_signal(arg_t->s_buffer_length);
+        dispatch_semaphore_signal(arg_t->s_buffer_full);
+        printf("collector thread:: reading value %d from buffer at position %d succeeded.\n", val,
+               arg_t->buffer->length);
 
+        // termination check.
         enqueue(&q_condition, val);
         if (pc_check(&q_condition)) {
             arg_t->is_running = false;
@@ -279,9 +277,9 @@ pthread_data_t *init_args(int buffer_length) {
     }
     args->is_running = true;
     args->s_cnt = dispatch_semaphore_create(1);
-    args->s_buffer_length = dispatch_semaphore_create(BUFFER_LENGTH);
     args->s_buffer = dispatch_semaphore_create(1);
-    args->s_buffer_index = dispatch_semaphore_create(0);
+    args->s_buffer_full = dispatch_semaphore_create(buffer_length);
+    args->s_buffer_empty = dispatch_semaphore_create(0);
     args->cnt = 0;
     return args;
 }
@@ -353,7 +351,7 @@ int dequeue(queue *q) {
         q->length--;
         return value;
     }
-    return -1;
+    return INT32_MIN;
 }
 
 bool is_empty(queue *q) {
@@ -362,4 +360,15 @@ bool is_empty(queue *q) {
 
 bool is_full(queue *q) {
     return q->length >= q->max_length ? true : false;
+}
+
+void print_help() {
+    printf("Usage:\n"
+           "\t./sem -m <messages-count>\n"
+           "\t./sem -b <buffer-size>\n"
+           "\t./sem -m <messages-count> -b <buffer-size>\n"
+           "\t./sem -d -m <messages-count> -b <buffer-size>\n"
+           "\nOptions:\n"
+           "\t-d\t\tDebug mode.\n"
+           "\nSwitching to default mode.\n\n");
 }
