@@ -18,6 +18,7 @@
 
 #define TYPE int
 #define BUFFER_LENGTH 2
+#define D_M_CNT 10;
 
 /**
  * @brief queue node structure definition.
@@ -117,7 +118,8 @@ bool pc_check(queue *q);
 
 /// Driver Program.
 int main(int argc, char *argv[]) {
-    int M_CNT = 10;
+    int M_CNT = D_M_CNT
+    // terminal proper usage.
     if (argc < 3)
         printf("Usage:\n"
                "\t./sem -m <messages-count>\n"
@@ -130,15 +132,20 @@ int main(int argc, char *argv[]) {
             if (strcmp(argv[i], "-m") == 0)
                 M_CNT = (int) strtol(argv[++i], (char **) NULL, 10);
 
+    // arguments to be passed between threads.
+    // for the sake of communication.
     pthread_data_t *args;
     args = init_args();
 
+    // monitor thread creation.
     pthread_t m_monitor_t;
     pthread_create(&m_monitor_t, NULL, pthread_producer, args);
 
+    // collector thread creation.
     pthread_t m_collector_t;
     pthread_create(&m_collector_t, NULL, pthread_consumer, args);
 
+    // messages threads creation.
     pthread_t messages_t[M_CNT];
     for (int i = 0; i < M_CNT; ++i)
         pthread_create(&messages_t[i], NULL, pthread_message, args);
@@ -146,8 +153,6 @@ int main(int argc, char *argv[]) {
     // threads joining.
     for (int i = 0; i < M_CNT; ++i)
         pthread_join(messages_t[i], NULL);
-
-
     pthread_join(m_monitor_t, NULL);
     pthread_join(m_collector_t, NULL);
 
