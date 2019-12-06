@@ -19,7 +19,7 @@
 #define TYPE int
 
 #define DEF_M_CNT 10
-#define DEF_B_LENGTH 2
+#define DEF_B_LEN 2
 
 /**
  * @brief queue node structure definition.
@@ -81,10 +81,24 @@ bool is_full(queue *q);
  * @brief thread's data definition.
  */
 typedef struct {
+    // running check.
+    // for infinite running restriction.
     bool is_running;
+
+    // received message count.
     int cnt;
+
+    // producer/consumer buffer.
     queue *buffer;
+
+    // semaphores.
     dispatch_semaphore_t s_cnt, s_buffer, s_buffer_full, s_buffer_empty;
+
+    // received message indices.
+    int t_index;
+
+    // message indices lock.
+    pthread_mutex_t m_lock;
 } pthread_data_t;
 
 /**
@@ -124,12 +138,13 @@ void print_help();
 int main(int argc, char *argv[]) {
     // set default values
     int M_CNT = DEF_M_CNT;
-    int B_LENGTH = DEF_B_LENGTH;
+    int B_LENGTH = DEF_B_LEN;
 
     // terminal proper usage.
-    if (argc < 3)
+    if (argc < 3) {
         print_help();
-    else
+        fprintf(stderr, "\nwarning: switching to default mode.\n\n");
+    } else
         for (int i = 0; i < argc; ++i) {
             if (strcmp(argv[i], "-m") == 0 || strcmp(argv[i], "--message") == 0)
                 M_CNT = (int) strtol(argv[++i], (char **) NULL, 10);
@@ -228,15 +243,13 @@ void *pthread_consumer(void *arg) {
     pthread_exit(NULL);
 }
 
-int t_index = 0;
-pthread_mutex_t l;
 
 void *pthread_message(void *arg) {
     pthread_data_t *arg_t = (pthread_data_t *) arg;
 
-    pthread_mutex_lock(&l);
-    int i = ++t_index;
-    pthread_mutex_unlock(&l);
+    pthread_mutex_lock(&arg_t->m_lock);
+    int i = ++arg_t->t_index;
+    pthread_mutex_unlock(&arg_t->m_lock);
 
     long time = random() % 10 + 1;
     sleep(time);
@@ -275,17 +288,21 @@ pthread_data_t *init_args(int buffer_length) {
         perror("buffer:: ");
         exit(EXIT_FAILURE);
     }
+    args->cnt = 0;
+    args->t_index = 0;
     args->is_running = true;
     args->s_cnt = dispatch_semaphore_create(1);
     args->s_buffer = dispatch_semaphore_create(1);
     args->s_buffer_full = dispatch_semaphore_create(buffer_length);
     args->s_buffer_empty = dispatch_semaphore_create(0);
-    args->cnt = 0;
+    pthread_mutex_init(&args->m_lock, NULL);
+
     return args;
 }
 
 void destroy_args(pthread_data_t *args) {
     destroy_queue(args->buffer);
+    pthread_mutex_destroy(&args->m_lock);
     free(args);
 }
 
@@ -368,7 +385,11 @@ void print_help() {
            "\t./sem -b <buffer-size>\n"
            "\t./sem -m <messages-count> -b <buffer-size>\n"
            "\t./sem -d -m <messages-count> -b <buffer-size>\n"
+
+           "\nVerbose:\n"
+           "\t--message\t\t<messages-count>.\n"
+           "\t--buffer\t\t<buffer-size>.\n"
+
            "\nOptions:\n"
-           "\t-d\t\tDebug mode.\n"
-           "\nSwitching to default mode.\n\n");
+           "\t-d\t\t\t\tDebug mode.\n");
 }
