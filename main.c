@@ -18,8 +18,8 @@
 
 #define TYPE int
 
-#define DEF_M_CNT 10
-#define DEF_B_LEN 2
+#define DEF_M_CNT 20
+#define DEF_B_LEN 4
 
 /**
  * @brief queue node structure definition.
@@ -34,7 +34,7 @@ typedef struct node {
  */
 typedef struct {
     node *front, *rear;
-    int length, max_length;
+    uint length, max_length;
 } queue;
 
 /**
@@ -128,7 +128,8 @@ pthread_data_t *init_args(int buffer_length);
 void destroy_args(pthread_data_t *args);
 
 /**
- * @brief check running status.
+ * @brief check running status according to count of useless iterations.
+ * @return boolean upon check.
  */
 bool pc_check(queue *q);
 
@@ -200,10 +201,10 @@ void *pthread_producer(void *arg) {
         // wait upon full buffer.
         dispatch_semaphore_wait(arg_t->s_buffer_full, DISPATCH_TIME_FOREVER);
         dispatch_semaphore_wait(arg_t->s_buffer, DISPATCH_TIME_FOREVER);
-        enqueue(arg_t->buffer, cnt);
+        int len = enqueue(arg_t->buffer, cnt);
         dispatch_semaphore_signal(arg_t->s_buffer);
         dispatch_semaphore_signal(arg_t->s_buffer_empty);
-        printf("monitor thread:: writing to buffer at position %d succeeded.\n", arg_t->buffer->length);
+        printf("monitor thread:: writing to buffer at position %d succeeded.\n", len);
     }
     fprintf(stderr, "warning:: producer thread has been activating for so long without any change.\n"
                     "warning:: producer thread will terminate.\n");
@@ -226,10 +227,10 @@ void *pthread_consumer(void *arg) {
         dispatch_semaphore_wait(arg_t->s_buffer_empty, DISPATCH_TIME_FOREVER);
         dispatch_semaphore_wait(arg_t->s_buffer, DISPATCH_TIME_FOREVER);
         val = dequeue(arg_t->buffer);
-        dispatch_semaphore_signal(arg_t->s_buffer);
-        dispatch_semaphore_signal(arg_t->s_buffer_full);
         printf("collector thread:: reading value %d from buffer at position %d succeeded.\n", val,
                arg_t->buffer->length);
+        dispatch_semaphore_signal(arg_t->s_buffer);
+        dispatch_semaphore_signal(arg_t->s_buffer_full);
 
         // termination check.
         enqueue(&q_condition, val);
@@ -339,7 +340,7 @@ int destroy_queue(queue *q) {
 
 int enqueue(queue *q, TYPE value) {
 #ifdef DEBUG
-    printf("buffer:: enqueue.\n");
+    printf("buffer:: %p:: enqueue.\n", &q);
 #endif
     if (q->length >= q->max_length)
         return -1;
@@ -351,12 +352,15 @@ int enqueue(queue *q, TYPE value) {
     else
         rear->next = node;
     q->length++;
-    return 0;
+#ifdef DEBUG
+    printf("buffer:: %p:: length:: %d.\n", &q, q->length);
+#endif
+    return q->length;
 }
 
 int dequeue(queue *q) {
 #ifdef DEBUG
-    printf("buffer:: dequeue.\n");
+    printf("buffer:: %p:: dequeue.\n", &q);
 #endif
     if (!is_empty(q)) {
         node *temp = q->front;
@@ -366,6 +370,9 @@ int dequeue(queue *q) {
         if (is_empty(q))
             q->rear = NULL;
         q->length--;
+#ifdef DEBUG
+        printf("buffer:: %p:: length:: %d.\n", &q, q->length);
+#endif
         return value;
     }
     return INT32_MIN;
