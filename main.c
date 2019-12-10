@@ -14,12 +14,14 @@
 #include <pthread.h>
 #include <dispatch/dispatch.h>
 
-#define DEBUG
+//#define DEBUG
 
 #define TYPE int
 
 #define DEF_M_CNT 20
 #define DEF_B_LEN 4
+
+bool DEBUG = false;
 
 /**
  * @brief queue node structure definition.
@@ -151,6 +153,8 @@ int main(int argc, char *argv[]) {
                 M_CNT = (int) strtol(argv[++i], (char **) NULL, 10);
             if (strcmp(argv[i], "-b") == 0 || strcmp(argv[i], "--buffer") == 0)
                 B_LENGTH = (int) strtol(argv[++i], (char **) NULL, 10);
+            if (strcmp(argv[i], "-d") == 0 || strcmp(argv[i], "--debug") == 0)
+                DEBUG = true;
         }
 
     // arguments to be passed between threads.
@@ -328,6 +332,8 @@ queue *init_queue(uint length) {
     q->rear = NULL;
     q->length = 0;
     q->max_length = length;
+    if (DEBUG)
+        printf("buffer:: %p:: initialization successful.\n", &q);
     return q;
 }
 
@@ -335,13 +341,15 @@ int destroy_queue(queue *q) {
     while (!is_empty(q))
         dequeue(q);
     free(q);
+    if (DEBUG)
+        printf("buffer:: %p:: destroyed successful.\n", &q);
     return 0;
 }
 
 int enqueue(queue *q, TYPE value) {
-#ifdef DEBUG
-    printf("buffer:: %p:: enqueue.\n", &q);
-#endif
+    if (DEBUG)
+        printf("buffer:: %p:: enqueue.\n", &q);
+
     if (q->length >= q->max_length)
         return -1;
     node *node = init_node(value);
@@ -352,16 +360,17 @@ int enqueue(queue *q, TYPE value) {
     else
         rear->next = node;
     q->length++;
-#ifdef DEBUG
-    printf("buffer:: %p:: length:: %d.\n", &q, q->length);
-#endif
+
+    if (DEBUG)
+        printf("buffer:: %p:: length:: %d.\n", &q, q->length);
+
     return q->length;
 }
 
 int dequeue(queue *q) {
-#ifdef DEBUG
-    printf("buffer:: %p:: dequeue.\n", &q);
-#endif
+    if (DEBUG)
+        printf("buffer:: %p:: dequeue.\n", &q);
+
     if (!is_empty(q)) {
         node *temp = q->front;
         TYPE value = temp->value;
@@ -370,9 +379,10 @@ int dequeue(queue *q) {
         if (is_empty(q))
             q->rear = NULL;
         q->length--;
-#ifdef DEBUG
-        printf("buffer:: %p:: length:: %d.\n", &q, q->length);
-#endif
+
+        if (DEBUG)
+            printf("buffer:: %p:: length:: %d.\n", &q, q->length);
+
         return value;
     }
     return INT32_MIN;
@@ -396,6 +406,7 @@ void print_help() {
            "\nVerbose:\n"
            "\t--message\t\t<messages-count>.\n"
            "\t--buffer\t\t<buffer-size>.\n"
+           "\t--debug\t\t<debug-mode>.\n"
 
            "\nOptions:\n"
            "\t-d\t\t\t\tDebug mode.\n");
